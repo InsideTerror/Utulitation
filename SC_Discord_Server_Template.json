@@ -1,0 +1,179 @@
+{
+    "name": "SC Command Network",
+    "roles": [
+        {
+            "name": "SC",
+            "permissions": "ADMINISTRATOR",
+            "color": "#ffcc00"
+        },
+        {
+            "name": "Military",
+            "permissions": "VIEW_CHANNEL",
+            "color": "#2e8b57"
+        },
+        {
+            "name": "Police",
+            "permissions": "VIEW_CHANNEL",
+            "color": "#1e90ff"
+        },
+        {
+            "name": "CATS",
+            "permissions": "VIEW_CHANNEL",
+            "color": "#8a2be2"
+        },
+        {
+            "name": "Civilians",
+            "permissions": "SEND_MESSAGES",
+            "color": "#aaaaaa"
+        },
+        {
+            "name": "Admin",
+            "permissions": "ADMINISTRATOR",
+            "color": "#ff0000"
+        },
+        {
+            "name": "Bot",
+            "permissions": "MANAGE_MESSAGES",
+            "color": "#00ffff"
+        },
+        {
+            "name": "Muted",
+            "permissions": "READ_MESSAGE_HISTORY",
+            "color": "#555555"
+        }
+    ],
+    "categories": [
+        {
+            "name": "\ud83d\udce2 Information",
+            "channels": [
+                {
+                    "name": "server-announcements",
+                    "type": "text"
+                },
+                {
+                    "name": "rules",
+                    "type": "text"
+                },
+                {
+                    "name": "role-assignment",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "\ud83d\udcac General",
+            "channels": [
+                {
+                    "name": "general-chat",
+                    "type": "text"
+                },
+                {
+                    "name": "introductions",
+                    "type": "text"
+                },
+                {
+                    "name": "support",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "\ud83c\udfdb\ufe0f SC Headquarters",
+            "channels": [
+                {
+                    "name": "sc-council-room",
+                    "type": "text"
+                },
+                {
+                    "name": "sc-voting",
+                    "type": "text"
+                },
+                {
+                    "name": "sc-archives",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "\ud83c\udf96 Military Zone",
+            "channels": [
+                {
+                    "name": "military-ops",
+                    "type": "text"
+                },
+                {
+                    "name": "military-strategy",
+                    "type": "text"
+                },
+                {
+                    "name": "military-radio",
+                    "type": "voice"
+                }
+            ]
+        },
+        {
+            "name": "\ud83d\udc6e Police Station",
+            "channels": [
+                {
+                    "name": "law-enforcement",
+                    "type": "text"
+                },
+                {
+                    "name": "case-reports",
+                    "type": "text"
+                },
+                {
+                    "name": "radio-channel",
+                    "type": "voice"
+                }
+            ]
+        },
+        {
+            "name": "\ud83d\udd75\ufe0f CATS Division",
+            "channels": [
+                {
+                    "name": "intelligence-briefings",
+                    "type": "text"
+                },
+                {
+                    "name": "investigation-board",
+                    "type": "text"
+                },
+                {
+                    "name": "comms-hub",
+                    "type": "voice"
+                }
+            ]
+        },
+        {
+            "name": "\ud83d\udde3 Civilian Area",
+            "channels": [
+                {
+                    "name": "civilian-lounge",
+                    "type": "text"
+                },
+                {
+                    "name": "suggestions",
+                    "type": "text"
+                },
+                {
+                    "name": "public-discussions",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "\ud83e\udd16 Bot Zone",
+            "channels": [
+                {
+                    "name": "commands",
+                    "type": "text"
+                },
+                {
+                    "name": "logs",
+                    "type": "text"
+                }
+            ]
+        }
+    ]
+}
