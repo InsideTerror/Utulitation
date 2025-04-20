@@ -98,4 +98,5 @@ async def hearing_close(ctx):
 
 
 # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-bot.run("put your token here")
+import os
+await bot.start(os.getenv("DISCORD_TOKEN"))
