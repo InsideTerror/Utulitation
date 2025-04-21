@@ -1,48 +1,75 @@
 import discord
 from discord.ext import commands, tasks
+from discord.utils import get
+import asyncio
 import datetime
+
+HEARING_CATEGORY_NAME = "Hearings"
+AUTHORIZED_ROLES = ["SC", "Judge"]
+INACTIVITY_TIMEOUT = 86400  # 24 hours in seconds
 
 class Hearing(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.last_activity = {}  # To track last activity in channels
-        self.clean_inactive_hearings.start()  # Start the loop
+        self.channel_timers = {}
 
-    @tasks.loop(minutes=60)
-    async def clean_inactive_hearings(self):
-        current_time = datetime.datetime.utcnow()
-        threshold = datetime.timedelta(hours=24)  # Channels inactive for 24 hours will be deleted
+    async def close_channel_after_timeout(self, channel: discord.TextChannel):
+        await asyncio.sleep(INACTIVITY_TIMEOUT)
+        if channel.id in self.channel_timers:
+            try:
+                await channel.set_permissions(channel.guild.default_role, overwrite=discord.PermissionOverwrite(read_messages=False))
+                await channel.send("🔒 This hearing channel has been closed due to 24 hours of inactivity.")
+                del self.channel_timers[channel.id]
+            except Exception as e:
+                print(f"Failed to close channel {channel.name}: {e}")
 
-        for channel_id, last_activity_time in list(self.last_activity.items()):
-            if current_time - last_activity_time > threshold:
-                channel = self.bot.get_channel(channel_id)
-                if channel:
-                    await channel.delete()  # Delete inactive channels
-                    self.last_activity.pop(channel_id)  # Remove from tracking list
+    def has_authorized_role(self, member):
+        return any(role.name in AUTHORIZED_ROLES for role in member.roles)
 
-    @clean_inactive_hearings.before_loop
-    async def before_clean_inactive_hearings(self):
-        await self.bot.wait_until_ready()
-        print("Cleaning inactive hearings...")  
-
-    @commands.command()
-    @commands.has_permissions(manage_channels=True)
-    async def hearing_reopen(self, ctx, channel_name: str, *members: discord.Member):
+    @commands.command(name="hearing")
+    async def create_hearing(self, ctx, *, reason="No reason provided"):
+        """Creates a temporary hearing channel."""
         guild = ctx.guild
-        category_name = "Court Hearings"
-        category = discord.utils.get(guild.categories, name=category_name)
-        if not category:
-            await ctx.send("\u274c Hearing category not found.")
-            return
+        category = get(guild.categories, name=HEARING_CATEGORY_NAME)
 
-        if discord.utils.get(category.text_channels, name=channel_name):
-            await ctx.send("\u274c That channel already exists.")
-            return
+        if category is None:
+            category = await guild.create_category(HEARING_CATEGORY_NAME)
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            ctx.author: discord.PermissionOverwrite(read_messages=True)
+            ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
 
-        for member in members:
-            overwrites[member] = discord.Permission
+        for role_name in AUTHORIZED_ROLES:
+            role = get(guild.roles, name=role_name)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+
+        channel_name = f"hearing-{ctx.author.name.lower()}-{ctx.author.discriminator}"
+        channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+        await channel.send(f"{ctx.author.mention} created this hearing for: **{reason}**")
+
+        self.channel_timers[channel.id] = datetime.datetime.utcnow()
+        self.bot.loop.create_task(self.close_channel_after_timeout(channel))
+
+        await ctx.send(f"Hearing channel created: {channel.mention}")
+
+    @commands.command(name="reopen_hearing")
+    async def reopen_hearing(self, ctx, channel: discord.TextChannel):
+        """Allows Judges or SC to reopen closed hearing channels."""
+        if not self.has_authorized_role(ctx.author):
+            return await ctx.send("❌ You don't have permission to reopen hearings.")
+
+        await channel.set_permissions(channel.guild.default_role, overwrite=discord.PermissionOverwrite(read_messages=False))
+        for role_name in AUTHORIZED_ROLES:
+            role = get(channel.guild.roles, name=role_name)
+            if role:
+                await channel.set_permissions(role, read_messages=True, send_messages=True)
+
+        await channel.send("🔓 This hearing has been reopened by an authorized member.")
+        self.channel_timers[channel.id] = datetime.datetime.utcnow()
+        self.bot.loop.create_task(self.close_channel_after_timeout(channel))
+        await ctx.send(f"{channel.mention} has been reopened.")
+
+async def setup(bot):
+    await bot.add_cog(Hearing(bot))
