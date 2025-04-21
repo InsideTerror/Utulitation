@@ -106,6 +106,27 @@ class Hearing(commands.Cog):
                 except:
                     pass
             self.last_activity.pop(channel_id, None)
+import discord
+from discord.ext import commands
+import asyncio
+
+@commands.command()
+async def hearing_end(ctx, channel_name):
+    # Get the channel by name
+    channel = discord.utils.get(ctx.guild.text_channels, name=channel_name)
+    
+    if not channel:
+        await ctx.send("Channel not found.")
+        return
+
+    # Check if the channel has had any messages in the last 24 hours
+    last_message_time = channel.last_message.created_at if channel.last_message else channel.created_at
+
+    if (discord.utils.utcnow() - last_message_time).total_seconds() > 86400:  # 24 hours
+        await channel.delete()
+        await ctx.send(f"Channel {channel_name} has been deleted due to inactivity.")
+    else:
+        await ctx.send(f"Channel {channel_name} is still active.")
 
 async def setup(bot):
     await bot.add_cog(Hearing(bot))
