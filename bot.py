@@ -14,6 +14,7 @@ async def load_extensions():
     # Load all your cogs here
     await bot.load_extension("cogs.setup")
     await bot.load_extension("cogs.hearing")  # If you're using this too
+    await bot.load_extension("cogs.reaction_roles")  # Added reaction_roles cog
 
 async def main():
     async with bot:
@@ -22,4 +23,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
