@@ -41,46 +41,55 @@ class Hearing(commands.Cog):
 
         await ctx.send(f"\u2705 Hearing channel `{channel.mention}` created.")
 
-    @commands.command()
-    @commands.has_permissions(manage_channels=True)
-    async def hearing_close(self, ctx):
+@commands.command()
+@commands.has_permissions(manage_channels=True)
+async def hearing_close(self, ctx):
+    # Ensure the command can be run in any channel
+    if ctx.channel.name == "commands":  # Adjust if needed for your server setup
         if ctx.channel.name.startswith("hearing-"):
             await ctx.send("\ud83d\udd10 Closing this hearing channel...")
             await ctx.channel.delete()
             self.last_activity.pop(ctx.channel.id, None)
         else:
-            await ctx.send("\u274c This command can only be used inside a hearing channel.")
+            await ctx.send("\u274c This command can only be used inside a hearing channel or the #commands channel.")
+    else:
+        await ctx.send("This command can only be used in the #commands channel or a hearing.")
+
 
     @commands.command()
-    @commands.has_permissions(manage_channels=True)
-    async def hearing_reopen(self, ctx, channel_name: str, *members: discord.Member):
-        guild = ctx.guild
-        category_name = "Court Hearings"
-        category = discord.utils.get(guild.categories, name=category_name)
-        if not category:
-            await ctx.send("\u274c Hearing category not found.")
-            return
+@commands.has_permissions(manage_channels=True)
+async def hearing_reopen(self, ctx, channel_name: str, *members: discord.Member):
+    guild = ctx.guild
+    category_name = "Court Hearings"
+    category = discord.utils.get(guild.categories, name=category_name)
+    if not category:
+        await ctx.send("\u274c Hearing category not found.")
+        return
 
-        if discord.utils.get(category.text_channels, name=channel_name):
-            await ctx.send("\u274c That channel already exists.")
-            return
+    # Check if the hearing channel exists, and reopen it
+    channel = discord.utils.get(guild.text_channels, name=channel_name)
+    if channel:
+        if channel.name.startswith("hearing-"):
+            # Reopen the hearing channel
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                ctx.author: discord.PermissionOverwrite(read_messages=True)
+            }
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            ctx.author: discord.PermissionOverwrite(read_messages=True)
-        }
+            for member in members:
+                overwrites[member] = discord.PermissionOverwrite(read_messages=True)
 
-        for member in members:
-            overwrites[member] = discord.PermissionOverwrite(read_messages=True)
+            judge_role = discord.utils.get(guild.roles, name="SC")
+            if judge_role:
+                overwrites[judge_role] = discord.PermissionOverwrite(read_messages=True)
 
-        judge_role = discord.utils.get(guild.roles, name="SC")
-        if judge_role:
-            overwrites[judge_role] = discord.PermissionOverwrite(read_messages=True)
+            await channel.edit(overwrites=overwrites)
+            await ctx.send(f"\ud83d\udd01 Reopened the hearing channel `{channel_name}`.")
+        else:
+            await ctx.send(f"\u274c The channel `{channel_name}` is not a hearing channel.")
+    else:
+        await ctx.send("\u274c That channel does not exist.")
 
-        channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        self.last_activity[channel.id] = datetime.datetime.utcnow()
-
-        await ctx.send(f"\ud83d\udd01 Reopened channel `{channel.mention}`.")
 
     @commands.Cog.listener()
     async def on_message(self, message):
