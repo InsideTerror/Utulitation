@@ -55,8 +55,7 @@ async def hearing_close(self, ctx):
     else:
         await ctx.send("This command can only be used in the #commands channel or a hearing.")
 
-
-    @commands.command()
+@commands.command()
 @commands.has_permissions(manage_channels=True)
 async def hearing_reopen(self, ctx, channel_name: str, *members: discord.Member):
     guild = ctx.guild
