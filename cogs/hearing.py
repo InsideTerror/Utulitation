@@ -138,6 +138,19 @@ async def hearing_force_end(self, ctx):
         await ctx.send("🔒 Hearing channel has been force-closed.", delete_after=5)
     else:
         await ctx.send("This command must be used in a hearing channel.")
+@commands.command(name="delete_hearing")
+@commands.has_permissions(manage_channels=True)
+async def delete_hearing(self, ctx, channel_name: str):
+    """Deletes a specific hearing channel by name."""
+    guild = ctx.guild
+    channel = discord.utils.get(guild.text_channels, name=channel_name)
+    
+    if channel and channel.name.startswith("hearing-"):
+        await channel.delete()
+        await ctx.send(f"🔒 {channel_name} has been deleted.", delete_after=5)
+    else:
+        await ctx.send(f"No hearing channel found with the name `{channel_name}`.", delete_after=5)
+
 
 async def setup(bot):
     await bot.add_cog(Hearing(bot))
