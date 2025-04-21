@@ -1,121 +1,94 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.utils import get
+from datetime import datetime, timedelta
 import asyncio
-import datetime
 
-HEARING_CATEGORY_NAME = "Hearings"
-AUTHORIZED_ROLES = ["SC", "Judge"]
-INACTIVITY_TIMEOUT = 86400  # 24 hours
-LOG_CHANNEL_NAME = "case-directory"
+from .helpers.google_logger import log_case_creation, append_transcript
+
+CATEGORY_NAME = "Hearings"
+CASE_LOG_CHANNEL = "case-directory"
+HEARING_INACTIVITY_LIMIT = 60 * 60 * 24  # 24 hours
+
 
 class Hearing(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.channel_timers = {}
+        self.cleanup_inactive_channels.start()
 
-    async def get_log_channel(self, guild):
-        return get(guild.text_channels, name=LOG_CHANNEL_NAME)
+    def cog_unload(self):
+        self.cleanup_inactive_channels.cancel()
 
-    async def log_action(self, guild, title, description, color=discord.Color.green()):
-        log_channel = await self.get_log_channel(guild)
-        if log_channel:
-            embed = discord.Embed(title=title, description=description, color=color)
-            embed.timestamp = datetime.datetime.utcnow()
-            await log_channel.send(embed=embed)
-
-    async def close_channel_after_timeout(self, channel: discord.TextChannel):
-        await asyncio.sleep(INACTIVITY_TIMEOUT)
-        if channel.id in self.channel_timers:
-            try:
-                await channel.set_permissions(channel.guild.default_role, overwrite=discord.PermissionOverwrite(read_messages=False))
-                await channel.send("🔒 This hearing channel has been closed due to 24 hours of inactivity.")
-                await self.log_action(channel.guild, "Hearing Auto-Closed",
-                    f"{channel.mention} was closed automatically due to inactivity.")
-                del self.channel_timers[channel.id]
-            except Exception as e:
-                print(f"Failed to close channel {channel.name}: {e}")
-
-    def has_authorized_role(self, member):
-        return any(role.name in AUTHORIZED_ROLES for role in member.roles)
-
-    @commands.command(name="hearing")
-    async def create_hearing(self, ctx, *, reason="No reason provided"):
+    @commands.command(name="starthearing")
+    async def start_hearing(self, ctx, case_id: str):
+        """Starts a new hearing and creates a temporary channel."""
         guild = ctx.guild
-        category = get(guild.categories, name=HEARING_CATEGORY_NAME)
-        if category is None:
-            category = await guild.create_category(HEARING_CATEGORY_NAME)
+        category = discord.utils.get(guild.categories, name=CATEGORY_NAME)
+        if not category:
+            category = await guild.create_category(CATEGORY_NAME)
+
+        channel_name = f"hearing-{case_id}"
+        existing_channel = discord.utils.get(guild.channels, name=channel_name)
+        if existing_channel:
+            await ctx.send(f"A hearing for case `{case_id}` already exists: {existing_channel.mention}")
+            return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
 
-        for role_name in AUTHORIZED_ROLES:
-            role = get(guild.roles, name=role_name)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-
-        channel_name = f"hearing-{ctx.author.name.lower()}-{ctx.author.discriminator}"
         channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await channel.send(f"{ctx.author.mention} created this hearing for: **{reason}**")
 
-        self.channel_timers[channel.id] = datetime.datetime.utcnow()
-        self.bot.loop.create_task(self.close_channel_after_timeout(channel))
+        timestamp = datetime.utcnow().isoformat()
+        log_channel = discord.utils.get(guild.text_channels, name=CASE_LOG_CHANNEL)
 
-        await self.log_action(guild, "Hearing Created",
-            f"Channel: {channel.mention}\nCreated by: {ctx.author.mention}\nReason: {reason}")
+        if log_channel:
+            await log_channel.send(f"📂 Hearing `{case_id}` created by {ctx.author.mention} at `{timestamp}`")
 
-        await ctx.send(f"Hearing channel created: {channel.mention}")
+        await log_case_creation(case_id, ctx.author.name, timestamp)
 
-    @commands.command(name="reopen_hearing")
-    async def reopen_hearing(self, ctx, channel: discord.TextChannel):
-        if not self.has_authorized_role(ctx.author):
-            return await ctx.send("❌ You don't have permission to reopen hearings.")
+        await ctx.send(f"Hearing for case `{case_id}` started in {channel.mention}")
 
-        await channel.set_permissions(channel.guild.default_role, overwrite=discord.PermissionOverwrite(read_messages=False))
-        for role_name in AUTHORIZED_ROLES:
-            role = get(channel.guild.roles, name=role_name)
-            if role:
-                await channel.set_permissions(role, read_messages=True, send_messages=True)
+    @commands.command(name="endhearing")
+    async def end_hearing(self, ctx, case_id: str):
+        """Ends a hearing and deletes the corresponding channel."""
+        channel_name = f"hearing-{case_id}"
+        channel = discord.utils.get(ctx.guild.channels, name=channel_name)
 
-        await channel.send("🔓 This hearing has been reopened by an authorized member.")
-        self.channel_timers[channel.id] = datetime.datetime.utcnow()
-        self.bot.loop.create_task(self.close_channel_after_timeout(channel))
+        if not channel:
+            await ctx.send(f"No active hearing found for case `{case_id}`.")
+            return
 
-        await self.log_action(ctx.guild, "Hearing Reopened",
-            f"{channel.mention} was reopened by {ctx.author.mention}.")
+        await channel.delete()
+        await ctx.send(f"Hearing for case `{case_id}` has been ended and the channel was removed.")
 
-        await ctx.send(f"{channel.mention} has been reopened.")
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if not message.guild or message.author.bot:
+            return
 
-    @commands.command(name="end_hearing")
-    async def end_hearing(self, ctx, channel: discord.TextChannel):
-        if not self.has_authorized_role(ctx.author):
-            return await ctx.send("❌ You don't have permission to end hearings.")
+        if message.channel.name.startswith("hearing-"):
+            case_id = message.channel.name.replace("hearing-", "")
+            await append_transcript(case_id, message.author.name, message.content, message.created_at)
 
-        await channel.set_permissions(channel.guild.default_role, overwrite=discord.PermissionOverwrite(read_messages=False))
-        await channel.send("🛑 This hearing has been forcefully ended by an authorized user.")
-        if channel.id in self.channel_timers:
-            del self.channel_timers[channel.id]
+    @tasks.loop(minutes=10)
+    async def cleanup_inactive_channels(self):
+        now = datetime.utcnow()
+        for guild in self.bot.guilds:
+            category = discord.utils.get(guild.categories, name=CATEGORY_NAME)
+            if not category:
+                continue
 
-        await self.log_action(ctx.guild, "Hearing Ended",
-            f"{channel.mention} was ended by {ctx.author.mention}.")
+            for channel in category.text_channels:
+                history = [msg async for msg in channel.history(limit=1)]
+                if not history:
+                    continue
 
-        await ctx.send(f"{channel.mention} has been closed.")
+                last_message_time = history[0].created_at
+                if (now - last_message_time).total_seconds() > HEARING_INACTIVITY_LIMIT:
+                    await channel.delete()
 
-    @commands.command(name="hearing_help")
-    async def hearing_help(self, ctx):
-        embed = discord.Embed(
-            title="🎙️ Hearing System – Commands Menu",
-            color=discord.Color.blue(),
-            description="Manage court hearings with temporary private channels."
-        )
-        embed.add_field(name="📥 `!hearing [reason]`", value="Create a new hearing channel.", inline=False)
-        embed.add_field(name="🔓 `!reopen_hearing #channel`", value="Reopen a closed hearing (SC or Judge only).", inline=False)
-        embed.add_field(name="🛑 `!end_hearing #channel`", value="Force-end a hearing channel (SC or Judge only).", inline=False)
-        embed.add_field(name="📘 `!hearing_help`", value="Show this help menu.", inline=False)
-        embed.set_footer(text="CATS Judicial Tools – Cloudville")
-        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Hearing(bot))
