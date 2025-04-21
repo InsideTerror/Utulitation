@@ -6,9 +6,11 @@ class Hearing(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.last_activity = {}  # To track last activity in channels
-        self.clean_inactive_hearings.start()  # Start the background task
+        self.clean_inactive_hearings.start()  # Start the loop
 
-    @tasks.loop(minutes=10)  # Runs every 10 minutes
+    @tasks.loop(hours=1)
+    async def clean_inactive_hearings(self):
+         @tasks.loop(minutes=10)  # Runs every 10 minutes
     async def clean_inactive_hearings(self):
         current_time = datetime.datetime.utcnow()
         threshold = datetime.timedelta(hours=2)  # Channels inactive for 2 hours will be deleted
@@ -23,6 +25,7 @@ class Hearing(commands.Cog):
     @clean_inactive_hearings.before_loop
     async def before_clean_inactive_hearings(self):
         await self.bot.wait_until_ready()
+        print("Cleaning inactive hearings...")  
 
     @commands.command()
     @commands.has_permissions(manage_channels=True)
