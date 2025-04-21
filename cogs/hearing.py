@@ -8,6 +8,7 @@ class Hearing(commands.Cog):
         self.last_activity = {}  # To track last activity in channels
         self.clean_inactive_hearings.start()  # Start the loop
 
+    @tasks.loop(minutes=60)
     async def clean_inactive_hearings(self):
         current_time = datetime.datetime.utcnow()
         threshold = datetime.timedelta(hours=24)  # Channels inactive for 24 hours will be deleted
@@ -44,31 +45,4 @@ class Hearing(commands.Cog):
         }
 
         for member in members:
-            overwrites[member] = discord.PermissionOverwrite(read_messages=True)
-
-        judge_role = discord.utils.get(guild.roles, name="SC")
-        if judge_role:
-            overwrites[judge_role] = discord.PermissionOverwrite(read_messages=True)
-
-        channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        self.last_activity[channel.id] = datetime.datetime.utcnow()
-
-        await ctx.send(f"\ud83d\udd01 Reopened channel `{channel.mention}`.")
-
-    @commands.command()
-    @commands.has_permissions(manage_channels=True)
-    async def hearing_close(self, ctx):
-        if ctx.channel.name.startswith("hearing-"):
-            await ctx.send("\ud83d\udd10 Closing this hearing channel...")
-            await ctx.channel.delete()
-            self.last_activity.pop(ctx.channel.id, None)
-        else:
-            await ctx.send("\u274c This command can only be used inside a hearing channel.")
-    
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.channel.name.startswith("hearing-") and not message.author.bot:
-            self.last_activity[message.channel.id] = datetime.datetime.utcnow()
-
-def setup(bot):
-    bot.add_cog(Hearing(bot))
+            overwrites[member] = discord.Permission
