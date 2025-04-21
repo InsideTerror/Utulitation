@@ -128,5 +128,16 @@ async def hearing_end(ctx, channel_name):
     else:
         await ctx.send(f"Channel {channel_name} is still active.")
 
+@commands.command(name="hearing_force_end")
+@commands.has_permissions(manage_channels=True)
+async def hearing_force_end(self, ctx):
+    """Force deletes the current hearing channel immediately."""
+    channel = ctx.channel
+    if channel.name.startswith("hearing-"):
+        await channel.delete()
+        await ctx.send("🔒 Hearing channel has been force-closed.", delete_after=5)
+    else:
+        await ctx.send("This command must be used in a hearing channel.")
+
 async def setup(bot):
     await bot.add_cog(Hearing(bot))
