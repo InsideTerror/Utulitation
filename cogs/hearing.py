@@ -8,12 +8,9 @@ class Hearing(commands.Cog):
         self.last_activity = {}  # To track last activity in channels
         self.clean_inactive_hearings.start()  # Start the loop
 
-    @tasks.loop(hours=1)
-    async def clean_inactive_hearings(self):
-         @tasks.loop(minutes=10)  # Runs every 10 minutes
     async def clean_inactive_hearings(self):
         current_time = datetime.datetime.utcnow()
-        threshold = datetime.timedelta(hours=2)  # Channels inactive for 2 hours will be deleted
+        threshold = datetime.timedelta(hours=24)  # Channels inactive for 24 hours will be deleted
 
         for channel_id, last_activity_time in list(self.last_activity.items()):
             if current_time - last_activity_time > threshold:
