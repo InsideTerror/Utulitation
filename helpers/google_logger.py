@@ -1,64 +1,89 @@
 import os
-import json
-from google.oauth2 import service_account
+import datetime
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Get the service account JSON key from environment variable
-SERVICE_ACCOUNT_INFO = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY'))
+SCOPES = [
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/spreadsheets'
+]
 
-# Define required scopes
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/documents']
+SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "service_account.json")
+SPREADSHEET_ID = "1E53HBsjHk7rSxrgFdE1ErW-xRTIsHTjdN2gIDG2rd7w"
+DOCUMENT_ID = "1CAwAhxEAclRkmmelN0mkhRjUe74_NhmbAQuKR4KMOEw"
 
-def create_sheets_service():
-    """Creates a Google Sheets service using the service account."""
-    try:
-        credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO, scopes=SCOPES
+class GoogleLogger:
+    def __init__(self):
+        creds = Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
         )
-        service = build('sheets', 'v4', credentials=credentials)
-        return service
-    except HttpError as err:
-        print(f"Error creating Sheets service: {err}")
-        return None
+        self.sheets_service = build('sheets', 'v4', credentials=creds)
+        self.docs_service = build('docs', 'v1', credentials=creds)
 
-def create_docs_service():
-    """Creates a Google Docs service using the service account."""
-    try:
-        credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO, scopes=SCOPES
-        )
-        service = build('docs', 'v1', credentials=credentials)
-        return service
-    except HttpError as err:
-        print(f"Error creating Docs service: {err}")
-        return None
-
-# Example function to log case data to Google Sheets
-def log_case_to_sheets(spreadsheet_id, case_data):
-    service = create_sheets_service()
-    if service:
-        sheet = service.spreadsheets()
+    async def log_case_to_sheet(self, case_id, judge, parties, status, timestamp):
+        body = {
+            'values': [[case_id, judge, parties, status, timestamp]]
+        }
         try:
-            request = sheet.values().append(
-                spreadsheetId=spreadsheet_id,
-                range="Sheet1!A1",
-                valueInputOption="RAW",
-                body={"values": [case_data]}
-            )
-            response = request.execute()
-            print("Logged case to Google Sheets:", response)
-        except HttpError as err:
-            print(f"Error logging case: {err}")
+            self.sheets_service.spreadsheets().values().append(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Sheet1!A:E",
+                valueInputOption="USER_ENTERED",
+                body=body
+            ).execute()
+        except HttpError as e:
+            print("Failed to log to sheet:", e)
 
-# Example function to log a transcript to Google Docs
-def log_transcript_to_docs(doc_id, transcript_text):
-    service = create_docs_service()
-    if service:
+    async def append_transcript(self, case_id, user, content, timestamp):
         try:
-            document = service.documents().get(documentId=doc_id).execute()
-            document['body']['content'].append({'paragraph': {'elements': [{'textRun': {'content': transcript_text}}]}})
-            updated_document = service.documents().update(documentId=doc_id, body=document).execute()
-            print("Logged transcript to Google Docs:", updated_document)
-        except HttpError as err:
-            print(f"Error logging transcript: {err}")
+            doc = self.docs_service.documents().get(documentId=DOCUMENT_ID).execute()
+            content_list = doc.get("body").get("content")
+            index = self._find_or_create_case_heading(case_id, content_list)
+            self.docs_service.documents().batchUpdate(
+                documentId=DOCUMENT_ID,
+                body={
+                    'requests': [
+                        {
+                            'insertText': {
+                                'location': {
+                                    'index': index
+                                },
+                                'text': f"[{timestamp}] {user}: {content}\n"
+                            }
+                        }
+                    ]
+                }
+            ).execute()
+        except HttpError as e:
+            print("Failed to append transcript:", e)
+
+    def _find_or_create_case_heading(self, case_id, content_list):
+        for element in content_list:
+            text = element.get("paragraph", {}).get("elements", [{}])[0].get("textRun", {}).get("content", "")
+            if text.strip() == f"Case {case_id}":
+                return element.get("startIndex") + len(text)
+
+        # Heading not found; create new heading
+        requests = [
+            {
+                'insertText': {
+                    'location': {'index': 1},
+                    'text': f"Case {case_id}\n"
+                }
+            },
+            {
+                'updateParagraphStyle': {
+                    'range': {
+                        'startIndex': 1,
+                        'endIndex': 1 + len(f"Case {case_id}\n")
+                    },
+                    'paragraphStyle': {
+                        'namedStyleType': 'HEADING_1'
+                    },
+                    'fields': 'namedStyleType'
+                }
+            }
+        ]
+        self.docs_service.documents().batchUpdate(documentId=DOCUMENT_ID, body={'requests': requests}).execute()
+        return 1 + len(f"Case {case_id}\n")
