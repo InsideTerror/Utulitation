@@ -142,5 +142,5 @@ class Hearing(commands.Cog):
         """Fetch the hearing details for a specific case"""
         await ctx.send(f"Hearing details for case {case_id}: <#channel_id>")
 
-def setup(bot):
+async def setup(bot):
     bot.add_cog(Hearing(bot))
