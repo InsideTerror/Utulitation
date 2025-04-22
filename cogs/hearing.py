@@ -1,7 +1,9 @@
 import discord
 from discord.ext import commands
 from helpers.google_logger import log_case_creation, append_transcript
-import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Hearing(commands.Cog):
     def __init__(self, bot):
@@ -142,5 +144,7 @@ class Hearing(commands.Cog):
         """Fetch the hearing details for a specific case"""
         await ctx.send(f"Hearing details for case {case_id}: <#channel_id>")
 
+# Corrected setup function to await add_cog
 async def setup(bot):
-    bot.add_cog(Hearing(bot))
+    await bot.add_cog(Hearing(bot))
+    logger.info("Hearing cog loaded successfully.")
