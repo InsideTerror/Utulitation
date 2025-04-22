@@ -15,6 +15,9 @@ intents.guilds = True
 intents.message_content = True  # Required for reading message content
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+async def setup(bot):
+    await bot.add_cog(Hearing(bot))
+
 @bot.event
 async def on_ready():
     logger.info(f"✅ Logged in as {bot.user}")
