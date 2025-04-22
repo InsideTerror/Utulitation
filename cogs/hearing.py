@@ -12,7 +12,7 @@ class Hearing(commands.Cog):
 
     # Command to create a new case
     @commands.command()
-async def create_case(self, ctx, case_name: str, *, case_details: str):
+    async def create_case(self, ctx, case_name: str, *, case_details: str):
     """Create a new case and log it"""
     from datetime import datetime
 
