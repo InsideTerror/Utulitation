@@ -1,12 +1,14 @@
 import os
-import datetime
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import json
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime
 
-# Load environment variables for the service account credentials
-credentials_info = {
-    "type": os.getenv("GOOGLE_TYPE"),
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/documents']
+
+def load_service_account():
+    credentials_info = {
+            "type": os.getenv("GOOGLE_TYPE"),
     "project_id": os.getenv("GOOGLE_PROJECT_ID"),
     "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
     "private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),  # Handle newlines in the private key
@@ -17,85 +19,65 @@ credentials_info = {
     "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL"),
     "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL"),
     "universe_domain": os.getenv("GOOGLE_UNIVERSE_DOMAIN")
-}
+    }
+    return Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
 
-SCOPES = [
-    'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/spreadsheets'
-]
+creds = load_service_account()
+gs = gspread.authorize(creds)
 
-# Initialize credentials
-creds = service_account.Credentials.from_service_account_info(credentials_info)
+def log_case_creation(case_id, author, title, timestamp):
+    sh = gs.open("CATS Hearing Logs")
+    sheet = sh.sheet1
+    sheet.append_row([str(timestamp), case_id, author, title, "Created"])
 
-# Initialize the Sheets and Docs API services
-sheets_service = build('sheets', 'v4', credentials=creds)
-docs_service = build('docs', 'v1', credentials=creds)
+def log_case_closure(case_id, timestamp):
+    sh = gs.open("CATS Hearing Logs")
+    sheet = sh.sheet1
+    sheet.append_row([str(timestamp), case_id, "", "", "Closed"])
 
-SPREADSHEET_ID = "1E53HBsjHk7rSxrgFdE1ErW-xRTIsHTjdN2gIDG2rd7w"
-DOCUMENT_ID = "1CAwAhxEAclRkmmelN0mkhRjUe74_NhmbAQuKR4KMOEw"
+def log_participant(channel_name, participant, action):
+    sh = gs.open("CATS Hearing Logs")
+    sheet = sh.sheet1
+    sheet.append_row([str(datetime.utcnow()), channel_name, participant, action])
 
-class GoogleLogger:
-    async def log_case_to_sheet(self, case_id, judge, parties, status, timestamp):
-        body = {
-            'values': [[case_id, judge, parties, status, timestamp]]
+def log_message(channel_name, author, message, timestamp):
+    sh = gs.open("CATS Hearing Logs")
+    sheet = sh.sheet1
+    sheet.append_row([str(timestamp), channel_name, author, message])
+
+def append_transcript(case_id, author, message):
+    from googleapiclient.discovery import build
+    docs_creds = load_service_account()
+    service = build('docs', 'v1', credentials=docs_creds)
+    doc = service.documents().get(documentId=os.getenv("HEARING_DOC_ID")).execute()
+    doc_content = doc.get("body").get("content")
+
+    requests = []
+    case_heading = f"Case {case_id}"
+    location_index = None
+
+    for element in doc_content:
+        if 'paragraph' in element:
+            elements = element['paragraph'].get('elements', [])
+            for e in elements:
+                text_run = e.get('textRun')
+                if text_run and case_heading in text_run.get('content', ''):
+                    location_index = doc_content.index(element) + 1
+
+    if location_index is None:
+        requests.append({"insertText": {"location": {"index": 1}, "text": case_heading + "\n"}})
+        location_index = 2
+
+    requests.append({
+        "insertText": {
+            "location": {"index": location_index},
+            "text": f"[{author}] {message}\n"
         }
-        try:
-            sheets_service.spreadsheets().values().append(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Sheet1!A:E",
-                valueInputOption="USER_ENTERED",
-                body=body
-            ).execute()
-        except HttpError as e:
-            print("Failed to log to sheet:", e)
+    })
 
-    async def append_transcript(self, case_id, user, content, timestamp):
-        try:
-            doc = docs_service.documents().get(documentId=DOCUMENT_ID).execute()
-            content_list = doc.get("body").get("content")
-            index = self._find_or_create_case_heading(case_id, content_list)
-            docs_service.documents().batchUpdate(
-                documentId=DOCUMENT_ID,
-                body={
-                    'requests': [
-                        {
-                            'insertText': {
-                                'location': {'index': index},
-                                'text': f"[{timestamp}] {user}: {content}\n"
-                            }
-                        }
-                    ]
-                }
-            ).execute()
-        except HttpError as e:
-            print("Failed to append transcript:", e)
+    service.documents().batchUpdate(documentId=os.getenv("HEARING_DOC_ID"), body={"requests": requests}).execute()
 
-    def _find_or_create_case_heading(self, case_id, content_list):
-        for element in content_list:
-            text = element.get("paragraph", {}).get("elements", [{}])[0].get("textRun", {}).get("content", "")
-            if text.strip() == f"Case {case_id}":
-                return element.get("startIndex") + len(text)
-
-        # Heading not found; create new heading
-        requests = [
-            {
-                'insertText': {
-                    'location': {'index': 1},
-                    'text': f"Case {case_id}\n"
-                }
-            },
-            {
-                'updateParagraphStyle': {
-                    'range': {
-                        'startIndex': 1,
-                        'endIndex': 1 + len(f"Case {case_id}\n")
-                    },
-                    'paragraphStyle': {
-                        'namedStyleType': 'HEADING_1'
-                    },
-                    'fields': 'namedStyleType'
-                }
-            }
-        ]
-        docs_service.documents().batchUpdate(documentId=DOCUMENT_ID, body={'requests': requests}).execute()
-        return 1 + len(f"Case {case_id}\n")
+def reopen_case(case_id):
+    sh = gs.open("CATS Hearing Logs")
+    sheet = sh.sheet1
+    sheet.append_row([str(datetime.utcnow()), case_id, "", "", "Reopened"])
