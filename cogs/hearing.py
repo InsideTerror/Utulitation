@@ -12,10 +12,31 @@ class Hearing(commands.Cog):
 
     # Command to create a new case
     @commands.command()
-    async def create_case(self, ctx, case_name: str, *, case_details: str):
-        """Create a new case and log it"""
-        log_case_creation(case_name, case_details)
-        await ctx.send(f"Case '{case_name}' has been created and logged.")
+async def create_case(self, ctx, case_name: str, *, case_details: str):
+    """Create a new case and log it"""
+    from datetime import datetime
+
+    # Generate required arguments
+    case_id = case_name  # Use case_name as case_id (adjust if case_id is different)
+    author = ctx.author.display_name  # The user who invoked the command
+    title = case_name  # Use case_name as the title
+    timestamp = datetime.utcnow().isoformat()  # Current UTC time in ISO 8601 format
+
+    # Log the case creation
+    try:
+        log_case_creation(case_id=case_id, author=author, title=title, timestamp=timestamp)
+        await ctx.send(f"✅ Case '{case_name}' has been created and logged.")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to log the case: {e}")
+        return
+
+    # Create a corresponding channel
+    try:
+        channel = await ctx.guild.create_text_channel(f"hearing-{case_id}")
+        self.hearing_channels[case_id] = channel.id
+        await ctx.send(f"✅ Channel '{channel.name}' created successfully: {channel.mention}")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to create the channel for case '{case_name}': {e}")
 
     # Command to append a message to an existing case transcript
     @commands.command()
