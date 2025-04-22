@@ -57,5 +57,6 @@ class Hearing(commands.Cog):
                 # You can also send a message or log it elsewhere
                 print(f"Hearing for case {case_id} has expired.")
 
-def setup(bot):
-    bot.add_cog(Hearing(bot))
+async def setup(bot):
+    await bot.add_cog(Hearing(bot))
+
